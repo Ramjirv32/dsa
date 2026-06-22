@@ -81,7 +81,7 @@ export function ConfigPanel({
           <input
             type="number"
             min={1}
-            max={64}
+            max={1024}
             value={maxCapacity}
             onChange={(e) => onMaxCapacity(Number(e.target.value))}
             className="w-full rounded border border-border bg-input px-2 py-1 font-mono"
@@ -524,9 +524,18 @@ export function HighlightedCells({
   rear?: number;
   top?: number;
   highlight: Highlight | null;
-  layout?: "linear" | "stack" | "circular";
+  layout?: string;
 }) {
   const CHUNK_SIZE = 10;
+
+  const isSingly = layout === "singly-linked-list";
+  const isDoubly = layout === "doubly-linked-list" || layout === "circular-doubly-list";
+  const isCircularList = layout === "circular-singly-list" || layout === "circular-doubly-list";
+  const isLinkedList = isSingly || layout === "doubly-linked-list" || layout === "linear-queue";
+  const isCircular = layout === "circular" || isCircularList;
+  const isQueue = layout === "linear-queue" || layout === "circular";
+  const isStack = layout === "stack";
+  const isCompound = isLinkedList || isCircularList || isQueue || isStack;
 
   const renderCell = (slot: { id: number; value: number | null }, i: number, style?: React.CSSProperties, className?: string) => {
     const isHL = highlight?.index === i;
@@ -560,58 +569,572 @@ export function HighlightedCells({
     );
   };
 
-  if (layout === "circular") {
-    const capacity = slots.length;
-    // Calculate radius to prevent overlap: circum = cap * 80px -> r = circum / 2PI
-    const radius = Math.max(100, (capacity * 80) / (2 * Math.PI));
-    const containerSize = radius * 2 + 160; // 160px padding for labels
-    const center = containerSize / 2;
+  const renderCompoundCell = (i: number, style?: React.CSSProperties, className?: string) => {
+    const slot = slots[i];
+    if (!slot) return null;
+    const isHL = highlight?.index === i;
+    const isEmpty = slot.value === null;
+    const address = "0x" + (0x3000 + i * 16).toString(16).toUpperCase();
+
+    // Resolve pointer tags
+    const tags: string[] = [];
+    if (layout === "circular" || layout === "linear-queue") {
+      if (i === front) tags.push("FR");
+      if (i === rear) tags.push("RR");
+    } else if (isCircularList || isLinkedList) {
+      const active = slots
+        .map((s, idx) => ({ s, idx }))
+        .filter((x) => x.s.value !== null);
+      if (active.length > 0) {
+        if (i === active[0].idx) tags.push("HD");
+        if (i === active[active.length - 1].idx) tags.push("TL");
+      }
+    } else if (layout === "stack") {
+      if (i === top) tags.push("TP");
+    }
+
+    // Resolve next/prev addresses
+    let nextAddr = "NULL";
+    let prevAddr = "NULL";
+
+    if (!isEmpty) {
+      if (layout === "linear-queue" || layout === "circular") {
+        const activeIdxs: number[] = [];
+        if (front !== -1) {
+          if (layout === "linear-queue") {
+            for (let idx = front; idx <= rear; idx++) activeIdxs.push(idx);
+          } else {
+            // circular queue
+            let curr = front;
+            while (curr !== rear) {
+              activeIdxs.push(curr);
+              curr = (curr + 1) % slots.length;
+            }
+            activeIdxs.push(rear);
+          }
+        }
+        const pos = activeIdxs.indexOf(i);
+        if (pos !== -1 && pos < activeIdxs.length - 1) {
+          nextAddr = "0x" + (0x3000 + activeIdxs[pos + 1] * 16).toString(16).toUpperCase();
+        }
+      } else if (layout === "stack") {
+        if (top !== -1 && i <= top && i > 0) {
+          nextAddr = "0x" + (0x3000 + (i - 1) * 16).toString(16).toUpperCase();
+        }
+      } else {
+        // Linked list (singly/doubly, linear/circular)
+        const active = slots
+          .map((s, idx) => ({ s, idx }))
+          .filter((x) => x.s.value !== null);
+        const pos = active.findIndex((x) => x.idx === i);
+        if (pos !== -1) {
+          if (pos < active.length - 1) {
+            nextAddr = "0x" + (0x3000 + active[pos + 1].idx * 16).toString(16).toUpperCase();
+          } else if (isCircularList) {
+            nextAddr = "0x" + (0x3000 + active[0].idx * 16).toString(16).toUpperCase();
+          }
+          
+          if (isDoubly) {
+            if (pos > 0) {
+              prevAddr = "0x" + (0x3000 + active[pos - 1].idx * 16).toString(16).toUpperCase();
+            } else if (layout === "circular-doubly-list") {
+              prevAddr = "0x" + (0x3000 + active[active.length - 1].idx * 16).toString(16).toUpperCase();
+            }
+          }
+        }
+      }
+    }
+
+    const boxWidth = isDoubly ? "w-32" : "w-24";
 
     return (
-      <div className="w-full overflow-auto scrollbar-none no-scrollbar flex items-center justify-center py-8">
-        <div 
-          className="relative" 
-          style={{ width: containerSize, height: containerSize }}
-        >
-          {slots.map((slot, i) => {
-            const angle = (i * 2 * Math.PI) / capacity - Math.PI / 2; // start from top
-            const x = center + radius * Math.cos(angle);
-            const y = center + radius * Math.sin(angle);
-            return renderCell(slot, i, {
-              position: "absolute",
-              left: `${x}px`,
-              top: `${y}px`,
-              transform: "translate(-50%, -50%)",
-            });
+      <div 
+        key={slot.id} 
+        className={`flex flex-col rounded-lg border-2 shadow-sm transition-all duration-300 ${boxWidth} h-18 bg-[var(--cell-bg)] overflow-hidden ${
+          isHL ? highlightClass(highlight!.kind) : "border-border"
+        } ${className || ""}`}
+        style={style}
+      >
+        {/* Top bar: Address and pointer tags */}
+        <div className="flex items-center justify-between px-1.5 py-0.5 bg-muted/30 border-b border-border select-none">
+          <span className="font-mono text-[9px] text-[var(--hl-peek)] font-semibold">{address}</span>
+          <div className="flex gap-0.5">
+            {tags.map((t) => (
+              <span 
+                key={t} 
+                className={`text-[8px] font-extrabold px-1 rounded-sm uppercase tracking-wide leading-none py-0.5 ${
+                  t === "FR" || t === "HD"
+                    ? "bg-[var(--pointer-front)]/10 text-[var(--pointer-front)] border border-[var(--pointer-front)]/20 animate-pulse"
+                    : t === "RR" || t === "TL"
+                    ? "bg-[var(--pointer-rear)]/10 text-[var(--pointer-rear)] border border-[var(--pointer-rear)]/20 animate-pulse"
+                    : "bg-[var(--hl-peek)]/10 text-[var(--hl-peek)] border border-[var(--hl-peek)]/20 animate-pulse"
+                }`}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Content columns */}
+        {isEmpty ? (
+          <div className="flex-1 flex items-center justify-center bg-[var(--cell-bg-empty)] border-dashed text-[10px] text-muted-foreground/50 font-mono select-none">
+            empty
+          </div>
+        ) : (
+          <div className="flex-1 flex divide-x divide-border font-mono text-[10px]">
+            {isDoubly && (
+              <div className="flex-1 flex flex-col items-center justify-center bg-muted/5 py-0.5">
+                <span className="text-[7px] text-muted-foreground/60 font-bold uppercase tracking-wider">prev</span>
+                <span className="font-semibold text-foreground/80 text-[9px] overflow-hidden text-ellipsis w-full text-center px-0.5">
+                  {prevAddr}
+                </span>
+              </div>
+            )}
+
+            <div className="flex-[1.2] flex flex-col items-center justify-center bg-background py-0.5">
+              <span className="text-[7px] text-muted-foreground/60 font-bold uppercase tracking-wider">data</span>
+              <span className="text-sm font-extrabold text-foreground leading-none mt-0.5">{slot.value}</span>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center bg-muted/5 py-0.5">
+              <span className="text-[7px] text-muted-foreground/60 font-bold uppercase tracking-wider">next</span>
+              <span className="font-semibold text-foreground/80 text-[9px] overflow-hidden text-ellipsis w-full text-center px-0.5">
+                {nextAddr}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (isLinkedList) {
+    const active = slots
+      .map((slot, index) => ({ slot, index }))
+      .filter((x) => x.slot.value !== null);
+
+    const isLQ = layout === "linear-queue";
+
+    if (active.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 border border-dashed border-border rounded-lg bg-[var(--cell-bg-empty)] text-center w-full min-h-[160px]">
+          <div className="font-mono text-sm text-muted-foreground mb-4">
+            {isLQ ? "Queue is Empty" : "Linked List is Empty"}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 font-mono text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="rounded bg-[var(--pointer-front)]/10 px-2 py-0.5 text-[var(--pointer-front)] font-semibold border border-[var(--pointer-front)]/20">
+                {isLQ ? "front" : "head / front"}
+              </span>
+              <span className="text-muted-foreground">→</span>
+              <span className="text-[var(--hl-delete)] font-semibold">{isLQ ? "-1" : "NULL"}</span>
+            </div>
+            {(isDoubly || isLQ) && (
+              <div className="flex items-center gap-1.5">
+                <span className="rounded bg-[var(--pointer-rear)]/10 px-2 py-0.5 text-[var(--pointer-rear)] font-semibold border border-[var(--pointer-rear)]/20">
+                  {isLQ ? "rear" : "tail / rear"}
+                </span>
+                <span className="text-muted-foreground">→</span>
+                <span className="text-[var(--hl-delete)] font-semibold">{isLQ ? "-1" : "NULL"}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center py-6 w-full overflow-x-auto scrollbar-none no-scrollbar">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-4 min-w-max px-4">
+          {active.map((item, idx) => {
+            const i = item.index;
+            const isLast = idx === active.length - 1;
+
+            return (
+              <React.Fragment key={item.slot.id}>
+                <div className="animate-fade-in">
+                  {renderCompoundCell(i)}
+                </div>
+                {!isLast ? (
+                  <div className="flex items-center justify-center text-black dark:text-white select-none font-extrabold text-2xl font-mono mx-0.5 animate-fade-in">
+                    {isDoubly ? "⇄" : "→"}
+                  </div>
+                ) : (
+                  isCircularList && (
+                    <div className="flex items-center justify-center select-none font-mono ml-1 animate-fade-in">
+                      <span className="text-xs text-black dark:text-white font-semibold border border-black/20 dark:border-white/20 bg-black/5 dark:bg-white/5 rounded px-1.5 py-0.5 animate-pulse">
+                        ↩ loop
+                      </span>
+                    </div>
+                  )
+                )}
+              </React.Fragment>
+            );
           })}
         </div>
       </div>
     );
   }
 
-  if (layout === "stack") {
-    // Render from bottom to top
+  if (isCircular) {
+    const capacity = slots.length;
+    const boxWidth = layout === "circular-doubly-list" ? 128 : 96;
+    const radius = Math.max(150, (capacity * (boxWidth + 40)) / (2 * Math.PI));
+    const containerSize = radius * 2 + 180;
+    const center = containerSize / 2;
+
+    const active = slots
+      .map((slot, index) => ({ slot, index }))
+      .filter((x) => x.slot.value !== null);
+
+    // Resolve pointers
+    let frontPtr = -2;
+    let rearPtr = -2;
+    let frontLabel = "front";
+    let rearLabel = "rear";
+
+    if (layout === "circular") {
+      frontPtr = front;
+      rearPtr = rear;
+    } else if (isCircularList && active.length > 0) {
+      frontPtr = active[0].index;
+      rearPtr = active[active.length - 1].index;
+      frontLabel = "head";
+      rearLabel = "tail";
+    }
+
+    const hubText = layout === "circular" ? "Ring" : layout === "circular-singly-list" ? "S-Ring" : "D-Ring";
+
     return (
-      <div className="flex flex-col-reverse items-center gap-2 py-4 w-full max-h-[600px] overflow-y-auto scrollbar-none no-scrollbar">
-        {slots.map((slot, i) => {
-          const isHL = highlight?.index === i;
-          const isEmpty = slot.value === null;
-          return (
-            <div key={slot.id} className="flex items-center gap-3">
-              <div className="w-16 text-right font-mono text-[10px] text-muted-foreground">[{i}]</div>
-              <div
-                className={`flex h-12 w-32 items-center justify-center rounded-sm border text-lg font-mono font-bold transition-all duration-300 ${
-                  isEmpty
-                    ? "border-dashed border-border bg-[var(--cell-bg-empty)] text-muted-foreground"
-                    : "border-border bg-[var(--cell-bg)] text-foreground shadow-sm animate-pop"
-                } ${isHL ? highlightClass(highlight!.kind) : ""}`}
+      <div className="w-full overflow-auto scrollbar-none no-scrollbar flex flex-col items-center justify-center py-6">
+        <div 
+          className="relative animate-fade-in" 
+          style={{ width: containerSize, height: containerSize }}
+        >
+          {/* SVG Track and Pointers */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-black dark:text-white">
+            <defs>
+              <marker
+                id="arrow-black"
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
               >
-                {slot.value ?? ""}
+                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="currentColor" />
+              </marker>
+              <marker
+                id="arrow-front"
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--pointer-front)" />
+              </marker>
+              <marker
+                id="arrow-rear"
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--pointer-rear)" />
+              </marker>
+            </defs>
+
+            {/* Circular track */}
+            <circle
+              cx={center}
+              cy={center}
+              r={radius}
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth="2"
+              strokeDasharray="6 6"
+              className="opacity-60"
+            />
+
+            {/* Circular queue connection arrows between consecutive active slots */}
+            {layout === "circular" && active.length > 1 && (() => {
+              const lines: React.ReactNode[] = [];
+              for (let idx = 0; idx < active.length; idx++) {
+                const curr = active[idx];
+                // For circular queue, next active may not be adjacent slot-wise;
+                // but we draw the logical next pointer: curr→next in active order
+                const next = active[(idx + 1) % active.length];
+                // Only draw for non-wrap if queue didn't wrap, else draw all
+                const isLast = idx === active.length - 1;
+                // draw all arrows including wrap-around
+                const angleCurr = (curr.index * 2 * Math.PI) / capacity - Math.PI / 2;
+                const x1 = center + radius * Math.cos(angleCurr);
+                const y1 = center + radius * Math.sin(angleCurr);
+                const angleNext = (next.index * 2 * Math.PI) / capacity - Math.PI / 2;
+                const x2 = center + radius * Math.cos(angleNext);
+                const y2 = center + radius * Math.sin(angleNext);
+                const dx = x2 - x1; const dy = y2 - y1;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 40) {
+                  const halfBox = 48;
+                  const startX = x1 + (dx * halfBox) / len;
+                  const startY = y1 + (dy * halfBox) / len;
+                  const endX = x2 - (dx * halfBox) / len;
+                  const endY = y2 - (dy * halfBox) / len;
+                  const mx = (startX + endX) / 2;
+                  const my = (startY + endY) / 2;
+                  const cx2 = mx - center; const cy2 = my - center;
+                  const cLen = Math.sqrt(cx2 * cx2 + cy2 * cy2);
+                  const ctrlX = cLen > 0 ? mx + (cx2 / cLen) * 28 : mx;
+                  const ctrlY = cLen > 0 ? my + (cy2 / cLen) * 28 : my;
+                  lines.push(
+                    <path
+                      key={`cq-${curr.index}-${next.index}`}
+                      d={`M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray={isLast ? "4 3" : undefined}
+                      markerEnd="url(#arrow-black)"
+                      className="animate-fade-in"
+                    />
+                  );
+                }
+              }
+              return lines;
+            })()}
+
+            {/* List connection arrows between active elements */}
+            {isCircularList && active.length > 0 && (() => {
+              const lines: React.ReactNode[] = [];
+              for (let idx = 0; idx < active.length; idx++) {
+                const curr = active[idx];
+                const next = active[(idx + 1) % active.length];
+                
+                if (active.length === 1) {
+                  const angle = (curr.index * 2 * Math.PI) / capacity - Math.PI / 2;
+                  const x = center + radius * Math.cos(angle);
+                  const y = center + radius * Math.sin(angle);
+                  lines.push(
+                    <path
+                      key={`loop-${curr.index}`}
+                      d={`M ${x - 10} ${y - 30} C ${x - 30} ${y - 60}, ${x + 30} ${y - 60}, ${x + 10} ${y - 30}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      markerEnd="url(#arrow-black)"
+                    />
+                  );
+                  continue;
+                }
+
+                // Calculate positions
+                const angleCurr = (curr.index * 2 * Math.PI) / capacity - Math.PI / 2;
+                const x1 = center + radius * Math.cos(angleCurr);
+                const y1 = center + radius * Math.sin(angleCurr);
+
+                const angleNext = (next.index * 2 * Math.PI) / capacity - Math.PI / 2;
+                const x2 = center + radius * Math.cos(angleNext);
+                const y2 = center + radius * Math.sin(angleNext);
+
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const len = Math.sqrt(dx * dx + dy * dy);
+
+                if (len > 60) {
+                  const startX = x1 + (dx * 45) / len;
+                  const startY = y1 + (dy * 45) / len;
+                  const endX = x2 - (dx * 45) / len;
+                  const endY = y2 - (dy * 45) / len;
+
+                  const mx = (startX + endX) / 2;
+                  const my = (startY + endY) / 2;
+                  const cx = mx - center;
+                  const cy = my - center;
+                  const cLen = Math.sqrt(cx * cx + cy * cy);
+                  const pushDist = 30;
+                  const ctrlX = mx + (cx / cLen) * pushDist;
+                  const ctrlY = my + (cy / cLen) * pushDist;
+
+                  lines.push(
+                    <g key={`conn-${curr.index}-${next.index}`} className="animate-fade-in text-black dark:text-white">
+                      <path
+                        d={`M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        markerEnd="url(#arrow-black)"
+                      />
+                      {layout === "circular-doubly-list" && (
+                        <path
+                          d={`M ${endX} ${endY} Q ${ctrlX} ${ctrlY} ${startX} ${startY}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeDasharray="3 3"
+                          markerEnd="url(#arrow-black)"
+                        />
+                      )}
+                    </g>
+                  );
+                }
+              }
+              return lines;
+            })()}
+
+            {/* Front/Head pointer arrow */}
+            {frontPtr >= 0 && frontPtr < capacity && (() => {
+              const angle = (frontPtr * 2 * Math.PI) / capacity - Math.PI / 2;
+              const xEnd = center + (radius - 45) * Math.cos(angle);
+              const yEnd = center + (radius - 45) * Math.sin(angle);
+              const xText = center + (radius - 85) * Math.cos(angle);
+              const yText = center + (radius - 85) * Math.sin(angle);
+              return (
+                <g className="animate-fade-in">
+                  <line
+                    x1={center}
+                    y1={center}
+                    x2={xEnd}
+                    y2={yEnd}
+                    stroke="var(--pointer-front)"
+                    strokeWidth="2"
+                    markerEnd="url(#arrow-front)"
+                  />
+                  <rect
+                    x={xText - 22}
+                    y={yText - 9}
+                    width="44"
+                    height="18"
+                    rx="3"
+                    fill="var(--card)"
+                    stroke="var(--pointer-front)"
+                    strokeWidth="1"
+                    className="opacity-95"
+                  />
+                  <text
+                    x={xText}
+                    y={yText + 1}
+                    fill="var(--pointer-front)"
+                    fontSize="9px"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                    alignmentBaseline="middle"
+                  >
+                    {frontLabel}
+                  </text>
+                </g>
+              );
+            })()}
+
+            {/* Rear/Tail pointer arrow */}
+            {rearPtr >= 0 && rearPtr < capacity && (() => {
+              const angle = (rearPtr * 2 * Math.PI) / capacity - Math.PI / 2;
+              const xEnd = center + (radius - 45) * Math.cos(angle);
+              const yEnd = center + (radius - 45) * Math.sin(angle);
+              const xText = center + (radius - 85) * Math.cos(angle);
+              const yText = center + (radius - 85) * Math.sin(angle);
+              return (
+                <g className="animate-fade-in">
+                  <line
+                    x1={center}
+                    y1={center}
+                    x2={xEnd}
+                    y2={yEnd}
+                    stroke="var(--pointer-rear)"
+                    strokeWidth="2"
+                    markerEnd="url(#arrow-rear)"
+                  />
+                  <rect
+                    x={xText - 20}
+                    y={yText - 9}
+                    width="40"
+                    height="18"
+                    rx="3"
+                    fill="var(--card)"
+                    stroke="var(--pointer-rear)"
+                    strokeWidth="1"
+                    className="opacity-95"
+                  />
+                  <text
+                    x={xText}
+                    y={yText + 1}
+                    fill="var(--pointer-rear)"
+                    fontSize="9px"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                    alignmentBaseline="middle"
+                  >
+                    {rearLabel}
+                  </text>
+                </g>
+              );
+            })()}
+          </svg>
+
+          {/* Center Hub */}
+          <div 
+            className="absolute rounded-full border-2 border-border bg-card flex items-center justify-center shadow-inner z-10 select-none"
+            style={{
+              left: `${center}px`,
+              top: `${center}px`,
+              width: "56px",
+              height: "56px",
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <span className="font-mono text-[9px] font-bold text-muted-foreground uppercase">{hubText}</span>
+          </div>
+
+          {/* Cells arranged in circle */}
+          {slots.map((slot, i) => {
+            const angle = (i * 2 * Math.PI) / capacity - Math.PI / 2;
+            const x = center + radius * Math.cos(angle);
+            const y = center + radius * Math.sin(angle);
+            return (
+              <div 
+                key={slot.id} 
+                className="absolute flex flex-col items-center justify-center z-20"
+                style={{
+                  left: `${x}px`,
+                  top: `${y}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                {renderCompoundCell(i)}
               </div>
-              <div className="w-16 font-mono text-[10px]">
-                {i === top && (
-                  <span className="text-[var(--pointer-rear)] font-semibold block animate-pop">◀ top</span>
-                )}
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (isStack) {
+    const activeStack = slots
+      .map((slot, index) => ({ slot, index }))
+      .filter((x) => x.slot.value !== null);
+    return (
+      <div className="flex flex-col-reverse items-center py-4 w-full max-h-[600px] overflow-y-auto scrollbar-none no-scrollbar">
+        {slots.map((slot, i) => {
+          const isActive = slot.value !== null;
+          const isNotBottom = i > 0 && slots[i - 1]?.value !== null;
+          return (
+            <div key={slot.id} className="flex flex-col items-center">
+              {isActive && isNotBottom && (
+                <div className="flex items-center justify-center text-black dark:text-white select-none font-bold text-xl my-1 animate-fade-in">
+                  <span className="leading-none">↑</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3 animate-fade-in">
+                {renderCompoundCell(i)}
               </div>
             </div>
           );
@@ -620,7 +1143,7 @@ export function HighlightedCells({
     );
   }
 
-  // layout === "linear"
+  // layout === "linear" / others (Arrays)
   const chunks = [];
   for (let i = 0; i < slots.length; i += CHUNK_SIZE) {
     chunks.push(slots.slice(i, i + CHUNK_SIZE));
@@ -637,5 +1160,98 @@ export function HighlightedCells({
         </div>
       ))}
     </div>
+  );
+}
+
+export function AddressTablePanel({
+  slots,
+  layout,
+  front = -2,
+  rear = -2,
+  top = -2,
+}: {
+  slots: { id: number; value: number | null }[];
+  layout: string;
+  front?: number;
+  rear?: number;
+  top?: number;
+}) {
+  const active = slots
+    .map((slot, index) => ({ slot, index }))
+    .filter((x) => x.slot.value !== null);
+
+  if (active.length === 0) {
+    return (
+      <PanelCard title="Address Table">
+        <div className="text-xs text-muted-foreground text-center py-4 font-mono select-none">
+          No active values (Empty)
+        </div>
+      </PanelCard>
+    );
+  }
+
+  const isCircularList = layout === "circular-singly-list" || layout === "circular-doubly-list";
+  const isLinkedList = layout === "singly-linked-list" || layout === "doubly-linked-list" || isCircularList;
+
+  return (
+    <PanelCard title="Address Table">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left font-mono text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-border text-muted-foreground select-none">
+              <th className="py-1.5 px-2">Value</th>
+              <th className="py-1.5 px-2">Address</th>
+              <th className="py-1.5 px-2">Pointers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.map(({ slot, index }) => {
+              const address = "0x" + (0x3000 + index * 16).toString(16).toUpperCase();
+              
+              // Resolve pointer tags
+              const tags: string[] = [];
+              if (layout === "circular" || layout === "linear-queue") {
+                if (index === front) tags.push("front");
+                if (index === rear) tags.push("rear");
+              } else if (isLinkedList) {
+                if (index === active[0].index) tags.push("head");
+                if (index === active[active.length - 1].index) tags.push("tail");
+              } else if (layout === "stack") {
+                if (index === top) tags.push("top");
+              }
+
+              return (
+                <tr key={slot.id} className="border-b border-border/50 hover:bg-muted/30">
+                  <td className="py-1.5 px-2 font-semibold text-foreground">{slot.value}</td>
+                  <td className="py-1.5 px-2 text-[var(--hl-peek)]">{address}</td>
+                  <td className="py-1.5 px-2 select-none">
+                    {tags.length > 0 ? (
+                      <span className="flex gap-1">
+                        {tags.map((t) => (
+                          <span
+                            key={t}
+                            className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                              t === "front" || t === "head"
+                                ? "bg-[var(--pointer-front)]/10 text-[var(--pointer-front)] border border-[var(--pointer-front)]/20"
+                                : t === "rear" || t === "tail"
+                                ? "bg-[var(--pointer-rear)]/10 text-[var(--pointer-rear)] border border-[var(--pointer-rear)]/20"
+                                : "bg-[var(--hl-peek)]/10 text-[var(--hl-peek)] border border-[var(--hl-peek)]/20"
+                            }`}
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </PanelCard>
   );
 }

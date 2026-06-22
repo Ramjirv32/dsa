@@ -19,6 +19,7 @@ import {
   ComplexityPanel,
   ConfigPanel,
   HighlightedCells,
+  AddressTablePanel,
   InputPanel,
   OperationsPanel,
   StatusBar,
@@ -82,15 +83,15 @@ function VisualizerPage() {
   const { entry } = Route.useLoaderData() as any;
 
   if (entry.slug === "linear-queue") {
-    return <LinearQueueVisualizer entry={entry} />;
+    return <LinearQueueVisualizer key={entry.slug} entry={entry} />;
   }
   if (entry.slug === "circular-queue") {
-    return <CircularQueueVisualizer entry={entry} />;
+    return <CircularQueueVisualizer key={entry.slug} entry={entry} />;
   }
   if (entry.slug === "stack") {
-    return <StackVisualizer entry={entry} />;
+    return <StackVisualizer key={entry.slug} entry={entry} />;
   }
-  return <PlaygroundVisualizer entry={entry} />;
+  return <PlaygroundVisualizer key={entry.slug} entry={entry} />;
 }
 
 /* ==========================================
@@ -386,14 +387,13 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => q.reset(),
                 disabled: q.animating,
               },
-              {
-                key: "create",
-                label: "Create",
-                tone: "ghost",
-                onClick: () => q.setCapacity(pendingCapacity),
-                disabled: q.animating,
-              },
             ]}
+          />
+          <AddressTablePanel
+            slots={q.slots}
+            layout="linear-queue"
+            front={q.front}
+            rear={q.rear}
           />
         </aside>
 
@@ -718,14 +718,13 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => q.reset(),
                 disabled: q.animating,
               },
-              {
-                key: "create",
-                label: "Create",
-                tone: "ghost",
-                onClick: () => q.setCapacity(pendingCapacity),
-                disabled: q.animating,
-              },
             ]}
+          />
+          <AddressTablePanel
+            slots={q.slots}
+            layout="circular"
+            front={q.front}
+            rear={q.rear}
           />
         </aside>
 
@@ -1038,14 +1037,12 @@ function StackVisualizer({ entry }: { entry: any }) {
                 onClick: () => s.reset(),
                 disabled: s.animating,
               },
-              {
-                key: "create",
-                label: "Create",
-                tone: "ghost",
-                onClick: () => s.setCapacity(pendingCapacity),
-                disabled: s.animating,
-              },
             ]}
+          />
+          <AddressTablePanel
+            slots={s.slots}
+            layout="stack"
+            top={s.top}
           />
         </aside>
 
@@ -1136,7 +1133,7 @@ function StackVisualizer({ entry }: { entry: any }) {
    4. PLAYGROUND VISUALIZER (FALLBACK FOR ALL OTHERS)
    ========================================== */
 function PlaygroundVisualizer({ entry }: { entry: any }) {
-  const [capacity, setCapacity] = usePersistentState("pg-capacity", 8);
+  const [capacity, setCapacity] = usePersistentState(`pg-capacity-${entry.slug}`, 8);
   const [pendingCapacity, setPendingCapacity] = useState(8);
   const [maxCapacity, setMaxCapacity] = useState(32);
   const [speed, setSpeed] = useState<Speed>("normal");
@@ -1145,11 +1142,11 @@ function PlaygroundVisualizer({ entry }: { entry: any }) {
   const [input, setInput] = useState<InputState>(emptyInput);
 
   // Local interactive slot state
-  const [slots, setSlots] = usePersistentState<{ id: number; value: number | null }[]>("pg-slots", () =>
+  const [slots, setSlots] = usePersistentState<{ id: number; value: number | null }[]>(`pg-slots-${entry.slug}`, () =>
     Array.from({ length: 8 }, (_, i) => ({ id: i, value: null }))
   );
   const [highlight, setHighlight] = useState<{ index: number; kind: "insert" | "delete" | "peek" } | null>(null);
-  const [message, setMessage] = usePersistentState(`pg-message`, `Interactive Playground initialized for ${entry.name}`);
+  const [message, setMessage] = usePersistentState(`pg-message-${entry.slug}`, `Interactive Playground initialized for ${entry.name}`);
   const [animating, setAnimating] = useState(false);
 
   const onChange = (k: InputField, v: string) =>
@@ -1160,6 +1157,629 @@ function PlaygroundVisualizer({ entry }: { entry: any }) {
 
   const code = useMemo(() => {
     const valuesStr = items.map((x) => String(x)).join(", ");
+
+    if (entry.slug === "singly-linked-list") {
+      return `// C Implementation of Singly Linked List
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+// Global head pointer
+struct Node* head = NULL;
+
+// Helper to create a new node
+struct Node* create_node(int value) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    if (!newNode) {
+        printf("Memory allocation failed\\n");
+        exit(1);
+    }
+    newNode->data = value;
+    newNode->next = NULL;
+    return newNode;
+}
+
+// Insert at the beginning of the list
+void insert_first(int value) {
+    struct Node* newNode = create_node(value);
+    newNode->next = head;
+    head = newNode;
+    printf("Inserted %d at head\\n", value);
+}
+
+// Insert at the end of the list
+void insert_end(int value) {
+    struct Node* newNode = create_node(value);
+    if (head == NULL) {
+        head = newNode;
+        printf("Inserted %d as head\\n", value);
+        return;
+    }
+    struct Node* temp = head;
+    while (temp->next != NULL) {
+        temp = temp->next;
+    }
+    temp->next = newNode;
+    printf("Inserted %d at end\\n", value);
+}
+
+// Delete the first node
+void delete_first() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    head = head->next;
+    printf("Deleted head node with value %d\\n", temp->data);
+    free(temp);
+}
+
+// Delete the last node
+void delete_end() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    if (head->next == NULL) {
+        printf("Deleted only node with value %d\\n", head->data);
+        free(head);
+        head = NULL;
+        return;
+    }
+    struct Node* temp = head;
+    while (temp->next->next != NULL) {
+        temp = temp->next;
+    }
+    printf("Deleted end node with value %d\\n", temp->next->data);
+    free(temp->next);
+    temp->next = NULL;
+}
+
+// Print the linked list
+void print_list() {
+    struct Node* temp = head;
+    printf("List: ");
+    while (temp != NULL) {
+        printf("%d -> ", temp->data);
+        temp = temp->next;
+    }
+    printf("NULL\\n");
+}
+
+int main(void) {
+    // Current visualized elements:
+    ${items.length === 0 ? "// List is currently empty" : items.map(v => `insert_end(${v});`).join("\n    ")}
+    
+    print_list();
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "doubly-linked-list") {
+      return `// C Implementation of Doubly Linked List
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Node {
+    int data;
+    struct Node* prev;
+    struct Node* next;
+};
+
+// Global head and tail pointers
+struct Node* head = NULL; // front pointer
+struct Node* tail = NULL; // rear pointer
+
+struct Node* create_node(int value) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    if (!newNode) {
+        printf("Memory allocation failed\\n");
+        exit(1);
+    }
+    newNode->data = value;
+    newNode->prev = NULL;
+    newNode->next = NULL;
+    return newNode;
+}
+
+void insert_first(int value) {
+    struct Node* newNode = create_node(value);
+    newNode->next = head;
+    if (head != NULL) {
+        head->prev = newNode;
+    } else {
+        tail = newNode;
+    }
+    head = newNode;
+    printf("Inserted %d at head/front\\n", value);
+}
+
+void insert_end(int value) {
+    struct Node* newNode = create_node(value);
+    newNode->prev = tail;
+    if (tail != NULL) {
+        tail->next = newNode;
+    } else {
+        head = newNode;
+    }
+    tail = newNode;
+    printf("Inserted %d at tail/rear\\n", value);
+}
+
+void delete_first() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    head = head->next;
+    if (head != NULL) {
+        head->prev = NULL;
+    } else {
+        tail = NULL;
+    }
+    printf("Deleted front node with value %d\\n", temp->data);
+    free(temp);
+}
+
+void delete_end() {
+    if (tail == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = tail;
+    tail = tail->prev;
+    if (tail != NULL) {
+        tail->next = NULL;
+    } else {
+        head = NULL;
+    }
+    printf("Deleted rear node with value %d\\n", temp->data);
+    free(temp);
+}
+
+void print_list() {
+    struct Node* temp = head;
+    printf("List (Forward): NULL <-> ");
+    while (temp != NULL) {
+        printf("%d <-> ", temp->data);
+        temp = temp->next;
+    }
+    printf("NULL\\n");
+}
+
+int main(void) {
+    // Current visualized elements:
+    ${items.length === 0 ? "// List is currently empty" : items.map(v => `insert_end(${v});`).join("\n    ")}
+    
+    print_list();
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "circular-singly-list") {
+      return `// C Implementation of Circular Singly Linked List
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+struct Node* head = NULL;
+
+struct Node* create_node(int value) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    if (!newNode) {
+        printf("Memory allocation failed\\n");
+        exit(1);
+    }
+    newNode->data = value;
+    newNode->next = NULL;
+    return newNode;
+}
+
+void insert_first(int value) {
+    struct Node* newNode = create_node(value);
+    if (head == NULL) {
+        head = newNode;
+        newNode->next = head;
+    } else {
+        struct Node* temp = head;
+        while (temp->next != head) {
+            temp = temp->next;
+        }
+        newNode->next = head;
+        temp->next = newNode;
+        head = newNode;
+    }
+    printf("Inserted %d at circular head\\n", value);
+}
+
+void insert_end(int value) {
+    struct Node* newNode = create_node(value);
+    if (head == NULL) {
+        head = newNode;
+        newNode->next = head;
+    } else {
+        struct Node* temp = head;
+        while (temp->next != head) {
+            temp = temp->next;
+        }
+        temp->next = newNode;
+        newNode->next = head;
+    }
+    printf("Inserted %d at circular end\\n", value);
+}
+
+void delete_first() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    if (head->next == head) {
+        free(head);
+        head = NULL;
+    } else {
+        struct Node* last = head;
+        while (last->next != head) {
+            last = last->next;
+        }
+        head = head->next;
+        last->next = head;
+        free(temp);
+    }
+    printf("Deleted circular head\\n");
+}
+
+void delete_end() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    if (head->next == head) {
+        free(head);
+        head = NULL;
+    } else {
+        struct Node* prev = NULL;
+        while (temp->next != head) {
+            prev = temp;
+            temp = temp->next;
+        }
+        prev->next = head;
+        free(temp);
+    }
+    printf("Deleted circular end\\n");
+}
+
+void print_list() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    printf("List (Circular): ");
+    do {
+        printf("%d -> ", temp->data);
+        temp = temp->next;
+    } while (temp != head);
+    printf("(back to head: %d)\\n", head->data);
+}
+
+int main(void) {
+    // Current visualized elements:
+    ${items.length === 0 ? "// List is currently empty" : items.map(v => `insert_end(${v});`).join("\n    ")}
+    
+    print_list();
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "circular-doubly-list") {
+      return `// C Implementation of Circular Doubly Linked List
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Node {
+    int data;
+    struct Node* prev;
+    struct Node* next;
+};
+
+struct Node* head = NULL; // Head / front pointer
+
+struct Node* create_node(int value) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    if (!newNode) {
+        printf("Memory allocation failed\\n");
+        exit(1);
+    }
+    newNode->data = value;
+    newNode->prev = NULL;
+    newNode->next = NULL;
+    return newNode;
+}
+
+void insert_first(int value) {
+    struct Node* newNode = create_node(value);
+    if (head == NULL) {
+        head = newNode;
+        newNode->next = head;
+        newNode->prev = head;
+    } else {
+        struct Node* last = head->prev;
+        newNode->next = head;
+        newNode->prev = last;
+        last->next = newNode;
+        head->prev = newNode;
+        head = newNode;
+    }
+    printf("Inserted %d at circular front\\n", value);
+}
+
+void insert_end(int value) {
+    struct Node* newNode = create_node(value);
+    if (head == NULL) {
+        head = newNode;
+        newNode->next = head;
+        newNode->prev = head;
+    } else {
+        struct Node* last = head->prev;
+        newNode->next = head;
+        newNode->prev = last;
+        last->next = newNode;
+        head->prev = newNode;
+    }
+    printf("Inserted %d at circular rear\\n", value);
+}
+
+void delete_first() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    if (head->next == head) {
+        free(head);
+        head = NULL;
+    } else {
+        struct Node* last = head->prev;
+        head = head->next;
+        head->prev = last;
+        last->next = head;
+        free(temp);
+    }
+    printf("Deleted circular front node\\n");
+}
+
+void delete_end() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* last = head->prev;
+    if (head->next == head) {
+        free(head);
+        head = NULL;
+    } else {
+        struct Node* secondLast = last->prev;
+        secondLast->next = head;
+        head->prev = secondLast;
+        free(last);
+    }
+    printf("Deleted circular rear node\\n");
+}
+
+void print_list() {
+    if (head == NULL) {
+        printf("List is empty\\n");
+        return;
+    }
+    struct Node* temp = head;
+    printf("List (Circular Doubly): ");
+    do {
+        printf("%d <-> ", temp->data);
+        temp = temp->next;
+    } while (temp != head);
+    printf("(loops back)\\n");
+}
+
+int main(void) {
+    // Current visualized elements:
+    ${items.length === 0 ? "// List is currently empty" : items.map(v => `insert_end(${v});`).join("\n    ")}
+    
+    print_list();
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "dynamic-array") {
+      return `// C Implementation of Dynamic Array (std::vector style)
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+int* data = NULL;
+int count = 0;
+int capacity = ${capacity};
+
+void init_array() {
+    data = (int*)malloc(capacity * sizeof(int));
+    if (!data) {
+        printf("Initialization failed\\n");
+        exit(1);
+    }
+}
+
+void resize() {
+    int old_cap = capacity;
+    capacity *= 2; // Double capacity
+    data = (int*)realloc(data, capacity * sizeof(int));
+    if (!data) {
+        printf("Reallocation failed\\n");
+        exit(1);
+    }
+    printf("Resized array from %d to %d slots\\n", old_cap, capacity);
+}
+
+void insert_end(int value) {
+    if (count >= capacity) {
+        resize();
+    }
+    data[count++] = value;
+    printf("Appended %d to dynamic array\\n", value);
+}
+
+void delete_end() {
+    if (count == 0) {
+        printf("Array is empty\\n");
+        return;
+    }
+    count--;
+    printf("Removed last element\\n");
+}
+
+int main(void) {
+    init_array();
+    
+    // Current visualized elements:
+    ${items.length === 0 ? "// Array is currently empty" : items.map(v => `insert_end(${v});`).join("\n    ")}
+    
+    printf("Size: %d, Capacity: %d\\n", count, capacity);
+    free(data);
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "binary-search") {
+      return `// C Implementation of Binary Search
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+#define CAPACITY ${capacity}
+
+int data[CAPACITY] = {${valuesStr}};
+int count = ${items.length};
+
+// Binary Search function
+int binary_search(int key) {
+    int low = 0;
+    int high = count - 1;
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+        if (data[mid] == key) {
+            return mid; // Found key at mid
+        }
+        if (data[mid] < key) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return -1; // Key not found
+}
+
+void insert_sorted(int value) {
+    if (count >= CAPACITY) {
+        printf("Error: Array is full\\n");
+        return;
+    }
+    // Check sorted order
+    if (count > 0 && value < data[count - 1]) {
+        printf("Error: Values must be sorted. Insertion rejected.\\n");
+        return;
+    }
+    data[count++] = value;
+    printf("Inserted %d at end (retains sorted order)\\n", value);
+}
+
+int main(void) {
+    printf("Array elements: ");
+    for (int i = 0; i < count; i++) {
+        printf("%d ", data[i]);
+    }
+    printf("\\n");
+
+    int key = 25; // Search example
+    int index = binary_search(key);
+    if (index != -1) {
+        printf("Key %d found at index %d\\n", key, index);
+    } else {
+        printf("Key %d not found in the array\\n", key);
+    }
+    return 0;
+}
+`;
+    }
+
+    if (entry.slug === "linear-search") {
+      return `// C Implementation of Linear Search
+// Generated for ${entry.name}
+#include <stdio.h>
+#include <stdlib.h>
+
+#define CAPACITY ${capacity}
+
+int data[CAPACITY] = {${valuesStr}};
+int count = ${items.length};
+
+// Linear Search function
+int linear_search(int key) {
+    for (int i = 0; i < count; i++) {
+        if (data[i] == key) {
+            return i; // Found key at index i
+        }
+    }
+    return -1; // Key not found
+}
+
+void insert_element(int value) {
+    if (count >= CAPACITY) {
+        printf("Error: Array is full\\n");
+        return;
+    }
+    data[count++] = value;
+    printf("Inserted %d at index %d\\n", value, count - 1);
+}
+
+int main(void) {
+    printf("Array elements: ");
+    for (int i = 0; i < count; i++) {
+        printf("%d ", data[i]);
+    }
+    printf("\\n");
+
+    int key = 25; // Search example
+    int index = linear_search(key);
+    if (index != -1) {
+        printf("Key %d found at index %d\\n", key, index);
+    } else {
+        printf("Key %d not found in the array\\n", key);
+    }
+    return 0;
+}
+`;
+    }
+
+    // Default static-array or search
     return `// Auto-generated by Data Structures Visualizer
 // ${entry.name} Simulator — capacity ${capacity}
 #include <stdio.h>
@@ -1214,7 +1834,7 @@ int main(void) {
     return 0;
 }
 `;
-  }, [entry.name, capacity, items]);
+  }, [entry.slug, entry.name, capacity, items]);
 
   const insertAtFirst = async (val: number) => {
     if (animating) return;
@@ -1402,8 +2022,47 @@ int main(void) {
   const searchOp = async (key: number) => {
     if (animating) return;
     setAnimating(true);
-    let found = false;
 
+    if (entry.slug === "binary-search") {
+      let low = 0;
+      const activeVals = slots.map(s => s.value).filter(val => val !== null);
+      let high = activeVals.length - 1;
+      let found = false;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        setHighlight({ index: mid, kind: "peek" });
+        setMessage(`Checking index ${mid} (${slots[mid].value}) in range [${low}, ${high}]...`);
+        await new Promise((r) => setTimeout(r, SPEED_MS[speed]));
+
+        if (slots[mid].value === key) {
+          setHighlight({ index: mid, kind: "insert" });
+          setMessage(`Found ${key} at index ${mid}!`);
+          found = true;
+          break;
+        } else if ((slots[mid].value as number) < key) {
+          setMessage(`${slots[mid].value} < ${key}. Moving low pointer to ${mid + 1}.`);
+          low = mid + 1;
+        } else {
+          setMessage(`${slots[mid].value} > ${key}. Moving high pointer to ${mid - 1}.`);
+          high = mid - 1;
+        }
+        await new Promise((r) => setTimeout(r, SPEED_MS[speed]));
+      }
+
+      if (!found) {
+        setMessage(`Value ${key} not found.`);
+        setHighlight(null);
+      }
+
+      setTimeout(() => {
+        setHighlight(null);
+        setAnimating(false);
+      }, 2000);
+      return;
+    }
+
+    let found = false;
     for (let i = 0; i < slots.length; i++) {
       if (slots[i].value === null) continue;
       
@@ -1434,28 +2093,192 @@ int main(void) {
     if (animating) return;
     setAnimating(true);
     
-    setSlots((prev) => {
-        let count = 0;
-        return prev.map(s => {
-            if (s.value === null && count < n) {
-                count++;
-                return { ...s, value: Math.floor(Math.random() * 100) };
-            }
-            return s;
+    if (entry.slug === "binary-search") {
+      const vals: number[] = [];
+      for (let i = 0; i < n; i++) {
+        vals.push(Math.floor(Math.random() * 90) + 10);
+      }
+      vals.sort((a, b) => a - b);
+      setSlots((prev) => {
+        return prev.map((s, idx) => {
+          if (idx < n) {
+            return { ...s, value: vals[idx] };
+          }
+          return { ...s, value: null };
         });
-    });
+      });
+      setMessage(`Randomly filled ${n} sorted slots`);
+    } else {
+      setSlots((prev) => {
+          let count = 0;
+          return prev.map(s => {
+              if (s.value === null && count < n) {
+                  count++;
+                  return { ...s, value: Math.floor(Math.random() * 100) };
+              }
+              return s;
+          });
+      });
+      setMessage(`Randomly filled ${n} slots`);
+    }
     
-    setMessage(`Randomly filled ${n} slots`);
     setHighlight(null);
     setAnimating(false);
   };
 
   const handleApplyCapacity = () => {
-    const cap = Math.max(1, Math.min(32, pendingCapacity));
+    const cap = Math.max(1, Math.min(maxCapacity, pendingCapacity));
     setCapacity(cap);
     setSlots(Array.from({ length: cap }, (_, i) => ({ id: i, value: null })));
     setMessage(`Playground capacity updated to ${cap}`);
   };
+
+  const isSearchSlug = entry.slug === "linear-search" || entry.slug === "binary-search";
+
+  const actions = isSearchSlug
+    ? [
+        {
+          key: "insert",
+          label: "Insert",
+          onClick: () => {
+            const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
+            if (isNaN(v)) return;
+            // Check sort order for binary search
+            if (entry.slug === "binary-search" && activeCount > 0) {
+              const activeVals = slots.map(s => s.value).filter(val => val !== null) as number[];
+              const lastVal = activeVals[activeVals.length - 1];
+              if (v < lastVal) {
+                alert(`Cannot insert ${v}. For Binary Search, elements must be in sorted order (ascending). Please enter a value >= ${lastVal}.`);
+                return;
+              }
+            }
+            insertAtEnd(v);
+            setInput((prev) => ({ ...prev, value: "" }));
+          },
+          disabled: animating,
+        },
+        {
+          key: "delete",
+          label: "Delete",
+          tone: "danger" as const,
+          onClick: () => deleteAtEnd(),
+          disabled: animating || activeCount === 0,
+        },
+        {
+          key: "search",
+          label: entry.slug === "binary-search" ? "Binary Search" : "Linear Search",
+          onClick: () => {
+            const k = Number(input.searchKey);
+            if (isNaN(k)) return;
+            searchOp(k);
+          },
+          disabled: animating || input.searchKey === "",
+        },
+        {
+          key: "randomFill",
+          label: "Random Fill",
+          onClick: () => {
+            const n = Number(input.randomN) || capacity;
+            randomFillOp(Math.max(1, Math.min(1024, n)));
+          },
+          disabled: animating,
+        },
+        {
+          key: "clear",
+          label: "Clear All",
+          tone: "ghost" as const,
+          onClick: () => {
+            setSlots(Array.from({ length: capacity }, (_, i) => ({ id: i, value: null })));
+            setMessage("Playground cleared.");
+          },
+          disabled: animating,
+        }
+      ]
+    : [
+        {
+          key: "insFirst",
+          label: "Insert First",
+          onClick: () => {
+            const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
+            if (isNaN(v)) return;
+            insertAtFirst(v);
+            setInput((prev) => ({ ...prev, value: "" }));
+          },
+          disabled: animating,
+        },
+        {
+          key: "insMid",
+          label: "Insert Middle",
+          onClick: () => {
+            const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
+            if (isNaN(v)) return;
+            insertAtMiddle(v);
+            setInput((prev) => ({ ...prev, value: "" }));
+          },
+          disabled: animating,
+        },
+        {
+          key: "insEnd",
+          label: "Insert End",
+          onClick: () => {
+            const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
+            if (isNaN(v)) return;
+            insertAtEnd(v);
+            setInput((prev) => ({ ...prev, value: "" }));
+          },
+          disabled: animating,
+        },
+        {
+          key: "delFirst",
+          label: "Delete First",
+          tone: "danger" as const,
+          onClick: () => deleteAtFirst(),
+          disabled: animating || activeCount === 0,
+        },
+        {
+          key: "delMid",
+          label: "Delete Middle",
+          tone: "danger" as const,
+          onClick: () => deleteAtMiddle(),
+          disabled: animating || activeCount === 0,
+        },
+        {
+          key: "delEnd",
+          label: "Delete End",
+          tone: "danger" as const,
+          onClick: () => deleteAtEnd(),
+          disabled: animating || activeCount === 0,
+        },
+        {
+          key: "search",
+          label: "Linear Search",
+          onClick: () => {
+            const k = Number(input.searchKey);
+            if (isNaN(k)) return;
+            searchOp(k);
+          },
+          disabled: animating || input.searchKey === "",
+        },
+        {
+          key: "randomFill",
+          label: "Random Fill",
+          onClick: () => {
+            const n = Number(input.randomN) || capacity;
+            randomFillOp(Math.max(1, Math.min(1024, n)));
+          },
+          disabled: animating,
+        },
+        {
+          key: "clear",
+          label: "Clear All",
+          tone: "ghost" as const,
+          onClick: () => {
+            setSlots(Array.from({ length: capacity }, (_, i) => ({ id: i, value: null })));
+            setMessage("Playground cleared.");
+          },
+          disabled: animating,
+        }
+      ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -1488,91 +2311,11 @@ int main(void) {
             ]}
           />
           <OperationsPanel
-            actions={[
-              {
-                key: "insFirst",
-                label: "Insert First",
-                onClick: () => {
-                  const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
-                  if (isNaN(v)) return;
-                  insertAtFirst(v);
-                  setInput((prev) => ({ ...prev, value: "" }));
-                },
-                disabled: animating,
-              },
-              {
-                key: "insMid",
-                label: "Insert Middle",
-                onClick: () => {
-                  const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
-                  if (isNaN(v)) return;
-                  insertAtMiddle(v);
-                  setInput((prev) => ({ ...prev, value: "" }));
-                },
-                disabled: animating,
-              },
-              {
-                key: "insEnd",
-                label: "Insert End",
-                onClick: () => {
-                  const v = input.value === "" ? Math.floor(Math.random() * 100) : Number(input.value);
-                  if (isNaN(v)) return;
-                  insertAtEnd(v);
-                  setInput((prev) => ({ ...prev, value: "" }));
-                },
-                disabled: animating,
-              },
-              {
-                key: "delFirst",
-                label: "Delete First",
-                tone: "danger",
-                onClick: () => deleteAtFirst(),
-                disabled: animating || activeCount === 0,
-              },
-              {
-                key: "delMid",
-                label: "Delete Middle",
-                tone: "danger",
-                onClick: () => deleteAtMiddle(),
-                disabled: animating || activeCount === 0,
-              },
-              {
-                key: "delEnd",
-                label: "Delete End",
-                tone: "danger",
-                onClick: () => deleteAtEnd(),
-                disabled: animating || activeCount === 0,
-              },
-              {
-                key: "search",
-                label: "Linear Search",
-                onClick: () => {
-                  const k = Number(input.searchKey);
-                  if (isNaN(k)) return;
-                  searchOp(k);
-                },
-                disabled: animating || input.searchKey === "",
-              },
-              {
-                key: "randomFill",
-                label: "Random Fill",
-                onClick: () => {
-                  const n = Number(input.randomN) || capacity;
-                  randomFillOp(Math.max(1, Math.min(1024, n)));
-                },
-                disabled: animating,
-              },
-              {
-                key: "reset",
-                label: "Clear All",
-                tone: "ghost",
-                onClick: () => {
-                  setSlots(Array.from({ length: capacity }, (_, i) => ({ id: i, value: null })));
-                  setMessage("Playground cleared.");
-                },
-                disabled: animating,
-              },
-            ]}
+            actions={actions}
+          />
+          <AddressTablePanel
+            slots={slots}
+            layout={entry.slug}
           />
         </aside>
 
@@ -1580,7 +2323,7 @@ int main(void) {
           <StatusBar message={message} state="PARTIALLY_FILLED" stepPending={false} onStep={() => {}} />
 
           <div className="rounded-lg border border-border bg-card p-4">
-            <HighlightedCells slots={slots} highlight={highlight} />
+            <HighlightedCells slots={slots} highlight={highlight} layout={entry.slug} />
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
