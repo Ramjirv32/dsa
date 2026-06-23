@@ -671,7 +671,7 @@ function ExperimentsLab() {
   const [codeOpen, setCodeOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
-  const sim = useSimulationControls(350, () => {
+  const sim = useSimulationControls(1800, () => {
     setResetKey(prev => prev + 1);
   });
 

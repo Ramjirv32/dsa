@@ -28,7 +28,7 @@ import {
   type InputState,
 } from "@/components/visualizer/Panels";
 
-export function useSimulationControls(initialDelay = 350, onResetCallback?: () => void) {
+export function useSimulationControls(initialDelay = 1800, onResetCallback?: () => void) {
   const [iterationCount, setIterationCount] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -499,7 +499,7 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
-  const sim = useSimulationControls(350, () => q.reset());
+  const sim = useSimulationControls(1800, () => q.reset());
 
   const onChange = (k: InputField, v: string) =>
     setInput((s) => ({ ...s, [k]: v }));
@@ -888,7 +888,7 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
-  const sim = useSimulationControls(350, () => q.reset());
+  const sim = useSimulationControls(1800, () => q.reset());
 
   const onChange = (k: InputField, v: string) =>
     setInput((s) => ({ ...s, [k]: v }));
@@ -1286,7 +1286,7 @@ function StackVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
-  const sim = useSimulationControls(350, () => s.reset());
+  const sim = useSimulationControls(1800, () => s.reset());
 
   const onChange = (k: InputField, v: string) =>
     setInput((prev) => ({ ...prev, [k]: v }));
@@ -1571,7 +1571,7 @@ function PlaygroundVisualizer({ entry }: { entry: any }) {
   const [message, setMessage] = usePersistentState(`pg-message-${entry.slug}`, `Interactive Playground initialized for ${entry.name}`);
   const [animating, setAnimating] = useState(false);
 
-  const sim = useSimulationControls(350, () => {
+  const sim = useSimulationControls(1800, () => {
     setSlots(Array.from({ length: capacity }, (_, i) => ({ id: i, value: null })));
     setMessage("Playground cleared.");
     setHighlight(null);
