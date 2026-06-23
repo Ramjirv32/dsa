@@ -9,12 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ExperimentsRouteImport } from './routes/experiments'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LearningDsaRouteImport } from './routes/learning.dsa'
 import { Route as DsSlugRouteImport } from './routes/ds.$slug'
 
+const ExperimentsRoute = ExperimentsRouteImport.update({
+  id: '/experiments',
+  path: '/experiments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LearningDsaRoute = LearningDsaRouteImport.update({
+  id: '/learning/dsa',
+  path: '/learning/dsa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DsSlugRoute = DsSlugRouteImport.update({
@@ -25,37 +37,59 @@ const DsSlugRoute = DsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
   '/ds/$slug': typeof DsSlugRoute
+  '/learning/dsa': typeof LearningDsaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
   '/ds/$slug': typeof DsSlugRoute
+  '/learning/dsa': typeof LearningDsaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
   '/ds/$slug': typeof DsSlugRoute
+  '/learning/dsa': typeof LearningDsaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ds/$slug'
+  fullPaths: '/' | '/experiments' | '/ds/$slug' | '/learning/dsa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ds/$slug'
-  id: '__root__' | '/' | '/ds/$slug'
+  to: '/' | '/experiments' | '/ds/$slug' | '/learning/dsa'
+  id: '__root__' | '/' | '/experiments' | '/ds/$slug' | '/learning/dsa'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ExperimentsRoute: typeof ExperimentsRoute
   DsSlugRoute: typeof DsSlugRoute
+  LearningDsaRoute: typeof LearningDsaRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/experiments': {
+      id: '/experiments'
+      path: '/experiments'
+      fullPath: '/experiments'
+      preLoaderRoute: typeof ExperimentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/learning/dsa': {
+      id: '/learning/dsa'
+      path: '/learning/dsa'
+      fullPath: '/learning/dsa'
+      preLoaderRoute: typeof LearningDsaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ds/$slug': {
@@ -70,7 +104,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ExperimentsRoute: ExperimentsRoute,
   DsSlugRoute: DsSlugRoute,
+  LearningDsaRoute: LearningDsaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

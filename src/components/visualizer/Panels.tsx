@@ -518,6 +518,7 @@ export function HighlightedCells({
   top = -2,
   highlight,
   layout = "linear",
+  pointers = [],
 }: {
   slots: { id: number; value: number | null }[];
   front?: number;
@@ -525,8 +526,22 @@ export function HighlightedCells({
   top?: number;
   highlight: Highlight | null;
   layout?: string;
+  pointers?: { name: string; index: number; color?: string; placement?: "top" | "bottom" }[];
 }) {
   const CHUNK_SIZE = 10;
+
+  const allPointers = [...(pointers || [])];
+  if (highlight && highlight.kind === "peek") {
+    const exists = allPointers.some((p) => p.index === highlight.index);
+    if (!exists) {
+      allPointers.push({
+        name: "checking",
+        index: highlight.index,
+        placement: "bottom",
+        color: "var(--hl-peek)",
+      });
+    }
+  }
 
   const isSingly = layout === "singly-linked-list";
   const isDoubly = layout === "doubly-linked-list" || layout === "circular-doubly-list";
@@ -540,15 +555,21 @@ export function HighlightedCells({
   const renderCell = (slot: { id: number; value: number | null }, i: number, style?: React.CSSProperties, className?: string) => {
     const isHL = highlight?.index === i;
     const isEmpty = slot.value === null;
+    const cellPointers = (allPointers || []).filter((p) => p.index === i);
     return (
       <div key={slot.id} className={`flex flex-col items-center gap-1.5 ${className || ""}`} style={style}>
-        <div className="h-5 font-mono text-[10px] text-center w-max">
+        <div className="h-9 font-mono text-[10px] flex flex-col items-center justify-end w-max text-center">
           {i === front && (
             <span className="text-[var(--pointer-front)] font-semibold block animate-slide-down">▼ front</span>
           )}
           {i === top && (
             <span className="text-[var(--pointer-rear)] font-semibold block animate-slide-down">▼ top</span>
           )}
+          {cellPointers.filter(p => p.placement !== "bottom").map((p, idx) => (
+            <span key={idx} className="font-extrabold block animate-slide-down" style={{ color: p.color || "var(--hl-peek)" }}>
+              ▼ {p.name}
+            </span>
+          ))}
         </div>
         <div
           className={`flex h-14 w-14 items-center justify-center rounded-lg border text-lg font-mono font-bold transition-all duration-300 ${
@@ -560,10 +581,16 @@ export function HighlightedCells({
           {slot.value ?? ""}
         </div>
         <div className="font-mono text-[10px] text-muted-foreground">[{i}]</div>
-        <div className="h-5 font-mono text-[10px] text-center w-max">
+        <div className="h-10 font-mono text-[10px] flex flex-col items-center justify-start w-max text-center">
           {i === rear && (
             <span className="text-[var(--pointer-rear)] font-semibold block animate-slide-up">▲ rear</span>
           )}
+          {cellPointers.filter(p => p.placement === "bottom").map((p, idx) => (
+            <span key={idx} className="font-extrabold block animate-slide-up flex flex-col items-center gap-0.5" style={{ color: p.color || "var(--hl-peek)" }}>
+              <span className="text-xs font-bold animate-bounce block">▲</span>
+              <span className="text-[8px] uppercase tracking-wider block">{p.name}</span>
+            </span>
+          ))}
         </div>
       </div>
     );
@@ -579,19 +606,33 @@ export function HighlightedCells({
     // Resolve pointer tags
     const tags: string[] = [];
     if (layout === "circular" || layout === "linear-queue") {
-      if (i === front) tags.push("FR");
-      if (i === rear) tags.push("RR");
+      if (i === front) tags.push("FRONT");
+      if (i === rear) tags.push("REAR");
     } else if (isCircularList || isLinkedList) {
       const active = slots
         .map((s, idx) => ({ s, idx }))
         .filter((x) => x.s.value !== null);
       if (active.length > 0) {
-        if (i === active[0].idx) tags.push("HD");
-        if (i === active[active.length - 1].idx) tags.push("TL");
+        if (i === active[0].idx) tags.push("HEAD");
+        if (i === active[active.length - 1].idx) tags.push("TAIL");
       }
     } else if (layout === "stack") {
-      if (i === top) tags.push("TP");
+      if (i === top) tags.push("TOP");
     }
+
+    // Add checking tag if highlight is on this element
+    if (highlight && highlight.index === i && highlight.kind === "peek") {
+      tags.push("CHECKING");
+    }
+
+    // Append custom pointer names as uppercase tags
+    const customCellPointers = (allPointers || []).filter((p) => p.index === i);
+    customCellPointers.forEach((p) => {
+      const uName = p.name.toUpperCase();
+      if (!tags.includes(uName)) {
+        tags.push(uName);
+      }
+    });
 
     // Resolve next/prev addresses
     let nextAddr = "NULL";
@@ -746,24 +787,40 @@ export function HighlightedCells({
 
     return (
       <div className="flex flex-col items-center py-6 w-full overflow-x-auto scrollbar-none no-scrollbar">
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-4 min-w-max px-4">
+        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 min-w-max px-4">
           {active.map((item, idx) => {
             const i = item.index;
             const isLast = idx === active.length - 1;
+            const cellPointers = (allPointers || []).filter((p) => p.index === i);
 
             return (
               <React.Fragment key={item.slot.id}>
-                <div className="animate-fade-in">
+                <div className="animate-fade-in flex flex-col items-center gap-1.5">
+                  <div className="h-6 font-mono text-[10px] flex flex-col items-center justify-end w-max text-center">
+                    {cellPointers.filter(p => p.placement !== "bottom").map((p, idx) => (
+                      <span key={idx} className="font-extrabold block animate-slide-down" style={{ color: p.color || "var(--hl-peek)" }}>
+                        ▼ {p.name}
+                      </span>
+                    ))}
+                  </div>
                   {renderCompoundCell(i)}
+                  <div className="h-10 font-mono text-[10px] flex flex-col items-center justify-start w-max text-center">
+                    {cellPointers.filter(p => p.placement === "bottom").map((p, idx) => (
+                      <span key={idx} className="font-extrabold block animate-slide-up flex flex-col items-center gap-0.5" style={{ color: p.color || "var(--hl-peek)" }}>
+                        <span className="text-xs font-bold animate-bounce block">▲</span>
+                        <span className="text-[8px] uppercase tracking-wider block">{p.name}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 {!isLast ? (
-                  <div className="flex items-center justify-center text-black dark:text-white select-none font-extrabold text-2xl font-mono mx-0.5 animate-fade-in">
+                  <div className="flex items-center justify-center text-black select-none font-extrabold text-2xl font-mono mx-3 animate-fade-in">
                     {isDoubly ? "⇄" : "→"}
                   </div>
                 ) : (
                   isCircularList && (
-                    <div className="flex items-center justify-center select-none font-mono ml-1 animate-fade-in">
-                      <span className="text-xs text-black dark:text-white font-semibold border border-black/20 dark:border-white/20 bg-black/5 dark:bg-white/5 rounded px-1.5 py-0.5 animate-pulse">
+                    <div className="flex items-center justify-center select-none font-mono ml-1 animate-fade-in text-black">
+                      <span className="text-xs font-semibold border border-black/30 bg-black/5 rounded px-1.5 py-0.5 animate-pulse">
                         ↩ loop
                       </span>
                     </div>
@@ -813,7 +870,7 @@ export function HighlightedCells({
           style={{ width: containerSize, height: containerSize }}
         >
           {/* SVG Track and Pointers */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-black dark:text-white">
+          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-black">
             <defs>
               <marker
                 id="arrow-black"
@@ -963,7 +1020,7 @@ export function HighlightedCells({
                   const ctrlY = my + (cy / cLen) * pushDist;
 
                   lines.push(
-                    <g key={`conn-${curr.index}-${next.index}`} className="animate-fade-in text-black dark:text-white">
+                    <g key={`conn-${curr.index}-${next.index}`} className="animate-fade-in text-black">
                       <path
                         d={`M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`}
                         fill="none"

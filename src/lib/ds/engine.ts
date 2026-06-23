@@ -33,8 +33,71 @@ export const SPEED_MS: Record<Speed, number> = {
   fast: 100,
 };
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+export class SimulationCancelledError extends Error {
+  constructor() {
+    super("Simulation cancelled");
+    this.name = "SimulationCancelledError";
+  }
+}
+
+if (typeof window !== "undefined") {
+  (window as any).__simControls = (window as any).__simControls || {
+    isPaused: false,
+    delayMs: 350,
+    iterationCount: 0,
+    elapsedTime: 0,
+    onStepTriggered: null,
+    pauseResolver: null,
+    simulationId: 0,
+  };
+}
+
+export async function sleep(ms: number): Promise<void> {
+  const controls = typeof window !== "undefined" ? (window as any).__simControls : null;
+  const startId = controls ? controls.simulationId : 0;
+  
+  let targetDelay = controls ? controls.delayMs : ms;
+  let accumulated = 0;
+  
+  while (accumulated < targetDelay) {
+    if (controls) {
+      if (controls.simulationId !== startId) {
+        throw new SimulationCancelledError();
+      }
+      targetDelay = controls.delayMs;
+      
+      if (controls.isPaused) {
+        await new Promise<void>((r) => {
+          controls.pauseResolver = r;
+        });
+        continue;
+      }
+    }
+    
+    const chunk = Math.min(25, targetDelay - accumulated);
+    await new Promise((r) => setTimeout(r, chunk));
+    accumulated += chunk;
+    
+    if (controls) {
+      if (controls.simulationId !== startId) {
+        throw new SimulationCancelledError();
+      }
+      controls.elapsedTime += chunk;
+      if (controls.onStepTriggered) {
+        controls.onStepTriggered();
+      }
+    }
+  }
+  
+  if (controls) {
+    if (controls.simulationId !== startId) {
+      throw new SimulationCancelledError();
+    }
+    controls.iterationCount += 1;
+    if (controls.onStepTriggered) {
+      controls.onStepTriggered();
+    }
+  }
 }
 
 export type HighlightKind = "insert" | "delete" | "peek" | null;

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { BookOpen } from "lucide-react";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { BookOpen, Code, Play, Pause, RotateCcw } from "lucide-react";
 import { getEntry, REGISTRY } from "@/lib/ds/registry";
 
 // Structures & Codegen
@@ -13,7 +13,7 @@ import { stackC } from "@/lib/ds/codegen/stack";
 import { useCircularQueue } from "@/lib/ds/structures/circular-queue";
 import { circularQueueC } from "@/lib/ds/codegen/circular-queue";
 
-import { SPEED_MS, usePersistentState, type Speed } from "@/lib/ds/engine";
+import { SPEED_MS, usePersistentState, type Speed, sleep } from "@/lib/ds/engine";
 import {
   CodeExportPanel,
   ComplexityPanel,
@@ -27,6 +27,193 @@ import {
   type InputField,
   type InputState,
 } from "@/components/visualizer/Panels";
+
+export function useSimulationControls(initialDelay = 350, onResetCallback?: () => void) {
+  const [iterationCount, setIterationCount] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [delayMs, setDelayMs] = useState(initialDelay);
+  const [animating, setAnimating] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.onStepTriggered = () => {
+          setIterationCount(controls.iterationCount);
+          setElapsedTime(controls.elapsedTime);
+          setAnimating(controls.animating || false);
+        };
+        controls.delayMs = delayMs;
+      }
+    }
+  }, [delayMs]);
+
+  const startOperation = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.iterationCount = 0;
+        controls.elapsedTime = 0;
+        controls.isPaused = false;
+        controls.animating = true;
+        controls.simulationId = (controls.simulationId || 0) + 1;
+        setAnimating(true);
+      }
+    }
+    setIsPaused(false);
+    setIterationCount(0);
+    setElapsedTime(0);
+  }, []);
+
+  const handlePause = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.isPaused = true;
+        setIsPaused(true);
+      }
+    }
+  }, []);
+
+  const handleResume = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.isPaused = false;
+        setIsPaused(false);
+        controls.pauseResolver?.();
+      }
+    }
+  }, []);
+
+  const handleRestart = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.isPaused = false;
+        setIsPaused(false);
+        controls.pauseResolver?.();
+        controls.iterationCount = 0;
+        controls.elapsedTime = 0;
+        controls.animating = false;
+        controls.simulationId = (controls.simulationId || 0) + 1;
+        setAnimating(false);
+      }
+    }
+    setIterationCount(0);
+    setElapsedTime(0);
+    if (onResetCallback) {
+      onResetCallback();
+    }
+  }, [onResetCallback]);
+
+  const handleDelayChange = useCallback((val: number) => {
+    setDelayMs(val);
+    if (typeof window !== "undefined") {
+      const controls = (window as any).__simControls;
+      if (controls) {
+        controls.delayMs = val;
+      }
+    }
+  }, []);
+
+  return {
+    iterationCount,
+    elapsedTime,
+    isPaused,
+    delayMs,
+    animating,
+    startOperation,
+    handlePause,
+    handleResume,
+    handleRestart,
+    handleDelayChange,
+  };
+}
+
+export function SimulationControlToolbar({
+  iterationCount,
+  elapsedTime,
+  isPaused,
+  delayMs,
+  animating,
+  onPause,
+  onResume,
+  onRestart,
+  onDelayChange,
+}: {
+  iterationCount: number;
+  elapsedTime: number;
+  isPaused: boolean;
+  delayMs: number;
+  animating: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onRestart: () => void;
+  onDelayChange: (ms: number) => void;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border border-border bg-card/60 backdrop-blur rounded-xl shadow-sm mb-4 animate-fade-in">
+      {/* Left: Metrics */}
+      <div className="flex items-center gap-6 font-mono text-xs text-foreground">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Iterations:</span>
+          <span className="font-extrabold text-[var(--hl-peek)] text-sm">{iterationCount}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Iteration Time:</span>
+          <span className="font-extrabold text-[var(--hl-insert)] text-sm">{elapsedTime} ms</span>
+        </div>
+      </div>
+
+      {/* Center: Controls */}
+      <div className="flex items-center gap-2">
+        {isPaused ? (
+          <button
+            onClick={onResume}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hl-insert)] text-background font-mono text-xs font-bold hover:opacity-90 shadow transition-all cursor-pointer"
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            <span>Continue</span>
+          </button>
+        ) : (
+          <button
+            onClick={onPause}
+            disabled={!animating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-foreground text-background font-mono text-xs font-bold hover:opacity-90 disabled:opacity-30 shadow transition-all cursor-pointer"
+          >
+            <Pause className="h-3.5 w-3.5 fill-current" />
+            <span>Stop</span>
+          </button>
+        )}
+        
+        <button
+          onClick={onRestart}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background text-foreground font-mono text-xs font-bold hover:bg-accent transition-colors cursor-pointer"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>Restart</span>
+        </button>
+      </div>
+
+      {/* Right: Speed Slider */}
+      <div className="flex items-center gap-3 w-full sm:w-auto">
+        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Speed Delay:</span>
+        <input
+          type="range"
+          min={50}
+          max={2000}
+          step={50}
+          value={delayMs}
+          onChange={(e) => onDelayChange(Number(e.target.value))}
+          className="flex-1 sm:w-32 accent-[var(--hl-peek)] cursor-pointer h-1.5 bg-border rounded-lg appearance-none"
+        />
+        <span className="font-mono text-xs text-muted-foreground min-w-[50px] text-right font-semibold">{delayMs}ms</span>
+      </div>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/ds/$slug")({
   head: ({ params }) => {
@@ -97,10 +284,22 @@ function VisualizerPage() {
 /* ==========================================
    Header Dropdown Component
    ========================================== */
-function VisualizerHeader({ title, family, slug }: { title: string; family: string; slug: string }) {
+function VisualizerHeader({ 
+  title, 
+  family, 
+  slug,
+  onToggleCode,
+  codeOpen
+}: { 
+  title: string; 
+  family: string; 
+  slug: string;
+  onToggleCode?: () => void;
+  codeOpen?: boolean;
+}) {
   const navigate = useNavigate();
   return (
-    <header className="border-b border-border bg-background">
+    <header className="border-b border-border bg-background sticky top-0 z-30">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           <Link
@@ -128,9 +327,26 @@ function VisualizerHeader({ title, family, slug }: { title: string; family: stri
             ))}
           </select>
         </div>
-        <span className="hidden font-mono text-[10px] uppercase tracking-widest text-muted-foreground sm:block">
-          KPRIET DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING <span className="opacity-50 mx-2">|</span> Interactive C Generator
-        </span>
+        
+        <div className="flex items-center gap-3">
+          {onToggleCode && (
+            <button
+              onClick={onToggleCode}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded border font-mono text-[10px] font-bold transition-all uppercase tracking-wider ${
+                codeOpen
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-foreground border-border hover:bg-accent hover:border-foreground"
+              }`}
+            >
+              <Code size={12} />
+              <span>{codeOpen ? "Hide C Code" : "Show C Code"}</span>
+            </button>
+          )}
+          
+          <span className="hidden font-mono text-[10px] uppercase tracking-widest text-muted-foreground sm:block">
+            KPRIET DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING <span className="opacity-50 mx-2">|</span> Interactive C Generator
+          </span>
+        </div>
       </div>
     </header>
   );
@@ -283,6 +499,8 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
+  const sim = useSimulationControls(350, () => q.reset());
+
   const onChange = (k: InputField, v: string) =>
     setInput((s) => ({ ...s, [k]: v }));
 
@@ -294,10 +512,17 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
   const code = useMemo(() => linearQueueC(q.capacity), [q.capacity]);
   const highlightedLines = useMemo(() => getLinearQueueHighlightedLines(q.message), [q.message]);
   const teacherExp = useMemo(() => getLinearQueueTeacherExplanation(q.message), [q.message]);
+  const [codeOpen, setCodeOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <VisualizerHeader title={entry.name} family={entry.family} slug={entry.slug} />
+    <div className="min-h-screen bg-background text-foreground relative">
+      <VisualizerHeader 
+        title={entry.name} 
+        family={entry.family} 
+        slug={entry.slug} 
+        onToggleCode={() => setCodeOpen(!codeOpen)}
+        codeOpen={codeOpen}
+      />
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-3">
@@ -305,7 +530,10 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
             capacity={q.capacity}
             pendingCapacity={pendingCapacity}
             onPendingCapacity={setPendingCapacity}
-            onApplyCapacity={() => q.setCapacity(pendingCapacity)}
+            onApplyCapacity={() => {
+              q.setCapacity(pendingCapacity);
+              sim.handleRestart();
+            }}
             maxCapacity={maxCapacity}
             onMaxCapacity={setMaxCapacity}
             speed={speed}
@@ -333,6 +561,7 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.value);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   q.enqueue(v);
                   setInput((s) => ({ ...s, value: "" }));
                 },
@@ -342,14 +571,20 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 key: "dequeue",
                 label: "Dequeue",
                 tone: "danger",
-                onClick: () => q.dequeue(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.dequeue();
+                },
                 disabled: q.animating,
               },
               {
                 key: "peek",
                 label: "Peek",
                 tone: "ghost",
-                onClick: () => q.peek(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.peek();
+                },
                 disabled: q.animating,
               },
               {
@@ -359,6 +594,7 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.searchKey);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   q.search(v);
                 },
                 disabled: q.animating || input.searchKey === "",
@@ -367,7 +603,10 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 key: "display",
                 label: "Display",
                 tone: "ghost",
-                onClick: () => q.display(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.display();
+                },
                 disabled: q.animating,
               },
               {
@@ -376,6 +615,7 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const n = num(input.randomN);
                   if (!Number.isFinite(n)) return;
+                  sim.startOperation();
                   q.randomFill(Math.max(1, Math.min(1024, n)));
                 },
                 disabled: q.animating,
@@ -384,7 +624,9 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
                 key: "reset",
                 label: "Reset",
                 tone: "ghost",
-                onClick: () => q.reset(),
+                onClick: () => {
+                  sim.handleRestart();
+                },
                 disabled: q.animating,
               },
             ]}
@@ -398,6 +640,17 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
         </aside>
 
         <section className="space-y-3">
+          <SimulationControlToolbar
+            iterationCount={sim.iterationCount}
+            elapsedTime={sim.elapsedTime}
+            isPaused={sim.isPaused}
+            delayMs={sim.delayMs}
+            animating={q.animating}
+            onPause={sim.handlePause}
+            onResume={sim.handleResume}
+            onRestart={sim.handleRestart}
+            onDelayChange={sim.handleDelayChange}
+          />
           <StatusBar
             message={q.message}
             state={q.state}
@@ -480,6 +733,37 @@ function LinearQueueVisualizer({ entry }: { entry: any }) {
           />
         </section>
       </main>
+
+      {codeOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[480px] bg-background border-l border-border shadow-2xl flex flex-col p-4 pt-16 animate-slide-left">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+            <h3 className="font-mono text-xs uppercase font-bold text-muted-foreground">C Implementation Code</h3>
+            <button 
+              onClick={() => setCodeOpen(false)}
+              className="font-mono text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-widest"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <CodeExportPanel
+              code={code}
+              filename="linear_queue.c"
+              highlightedLines={highlightedLines}
+              onCodeChange={(newCode) => {
+                const match = newCode.match(/#define\s+CAPACITY\s+(\d+)/);
+                if (match) {
+                  const cap = parseInt(match[1], 10);
+                  if (!isNaN(cap) && cap >= 1 && cap <= 64 && cap !== q.capacity) {
+                    q.setCapacity(cap);
+                    setPendingCapacity(cap);
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -604,6 +888,8 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
+  const sim = useSimulationControls(350, () => q.reset());
+
   const onChange = (k: InputField, v: string) =>
     setInput((s) => ({ ...s, [k]: v }));
 
@@ -626,9 +912,17 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
     return q.front !== -1 && (q.rear + 1) % q.capacity === q.front;
   }, [q.front, q.rear, q.capacity]);
 
+  const [codeOpen, setCodeOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <VisualizerHeader title={entry.name} family={entry.family} slug={entry.slug} />
+    <div className="min-h-screen bg-background text-foreground relative">
+      <VisualizerHeader 
+        title={entry.name} 
+        family={entry.family} 
+        slug={entry.slug} 
+        onToggleCode={() => setCodeOpen(!codeOpen)}
+        codeOpen={codeOpen}
+      />
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-3">
@@ -636,7 +930,10 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
             capacity={q.capacity}
             pendingCapacity={pendingCapacity}
             onPendingCapacity={setPendingCapacity}
-            onApplyCapacity={() => q.setCapacity(pendingCapacity)}
+            onApplyCapacity={() => {
+              q.setCapacity(pendingCapacity);
+              sim.handleRestart();
+            }}
             maxCapacity={maxCapacity}
             onMaxCapacity={setMaxCapacity}
             speed={speed}
@@ -664,6 +961,7 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.value);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   q.enqueue(v);
                   setInput((s) => ({ ...s, value: "" }));
                 },
@@ -673,14 +971,20 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 key: "dequeue",
                 label: "Dequeue",
                 tone: "danger",
-                onClick: () => q.dequeue(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.dequeue();
+                },
                 disabled: q.animating,
               },
               {
                 key: "peek",
                 label: "Peek",
                 tone: "ghost",
-                onClick: () => q.peek(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.peek();
+                },
                 disabled: q.animating,
               },
               {
@@ -690,6 +994,7 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.searchKey);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   q.search(v);
                 },
                 disabled: q.animating || input.searchKey === "",
@@ -698,7 +1003,10 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 key: "display",
                 label: "Display",
                 tone: "ghost",
-                onClick: () => q.display(),
+                onClick: () => {
+                  sim.startOperation();
+                  q.display();
+                },
                 disabled: q.animating,
               },
               {
@@ -707,6 +1015,7 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const n = num(input.randomN);
                   if (!Number.isFinite(n)) return;
+                  sim.startOperation();
                   q.randomFill(Math.max(1, Math.min(1024, n)));
                 },
                 disabled: q.animating,
@@ -715,7 +1024,9 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
                 key: "reset",
                 label: "Reset",
                 tone: "ghost",
-                onClick: () => q.reset(),
+                onClick: () => {
+                  sim.handleRestart();
+                },
                 disabled: q.animating,
               },
             ]}
@@ -729,6 +1040,17 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
         </aside>
 
         <section className="space-y-3">
+          <SimulationControlToolbar
+            iterationCount={sim.iterationCount}
+            elapsedTime={sim.elapsedTime}
+            isPaused={sim.isPaused}
+            delayMs={sim.delayMs}
+            animating={q.animating}
+            onPause={sim.handlePause}
+            onResume={sim.handleResume}
+            onRestart={sim.handleRestart}
+            onDelayChange={sim.handleDelayChange}
+          />
           <StatusBar
             message={q.message}
             state={q.state}
@@ -806,6 +1128,37 @@ function CircularQueueVisualizer({ entry }: { entry: any }) {
           />
         </section>
       </main>
+
+      {codeOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[480px] bg-background border-l border-border shadow-2xl flex flex-col p-4 pt-16 animate-slide-left">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+            <h3 className="font-mono text-xs uppercase font-bold text-muted-foreground">C Implementation Code</h3>
+            <button 
+              onClick={() => setCodeOpen(false)}
+              className="font-mono text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-widest"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <CodeExportPanel
+              code={code}
+              filename="circular_queue.c"
+              highlightedLines={highlightedLines}
+              onCodeChange={(newCode) => {
+                const match = newCode.match(/#define\s+CAPACITY\s+(\d+)/);
+                if (match) {
+                  const cap = parseInt(match[1], 10);
+                  if (!isNaN(cap) && cap >= 1 && cap <= 64 && cap !== q.capacity) {
+                    q.setCapacity(cap);
+                    setPendingCapacity(cap);
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -933,6 +1286,8 @@ function StackVisualizer({ entry }: { entry: any }) {
     stepMode,
   });
 
+  const sim = useSimulationControls(350, () => s.reset());
+
   const onChange = (k: InputField, v: string) =>
     setInput((prev) => ({ ...prev, [k]: v }));
 
@@ -945,9 +1300,17 @@ function StackVisualizer({ entry }: { entry: any }) {
   const highlightedLines = useMemo(() => getStackHighlightedLines(s.message), [s.message]);
   const teacherExp = useMemo(() => getStackTeacherExplanation(s.message), [s.message]);
 
+  const [codeOpen, setCodeOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <VisualizerHeader title={entry.name} family={entry.family} slug={entry.slug} />
+    <div className="min-h-screen bg-background text-foreground relative">
+      <VisualizerHeader 
+        title={entry.name} 
+        family={entry.family} 
+        slug={entry.slug} 
+        onToggleCode={() => setCodeOpen(!codeOpen)}
+        codeOpen={codeOpen}
+      />
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-3">
@@ -955,7 +1318,10 @@ function StackVisualizer({ entry }: { entry: any }) {
             capacity={s.capacity}
             pendingCapacity={pendingCapacity}
             onPendingCapacity={setPendingCapacity}
-            onApplyCapacity={() => s.setCapacity(pendingCapacity)}
+            onApplyCapacity={() => {
+              s.setCapacity(pendingCapacity);
+              sim.handleRestart();
+            }}
             maxCapacity={maxCapacity}
             onMaxCapacity={setMaxCapacity}
             speed={speed}
@@ -983,6 +1349,7 @@ function StackVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.value);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   s.push(v);
                   setInput((prev) => ({ ...prev, value: "" }));
                 },
@@ -992,14 +1359,20 @@ function StackVisualizer({ entry }: { entry: any }) {
                 key: "pop",
                 label: "Pop",
                 tone: "danger",
-                onClick: () => s.pop(),
+                onClick: () => {
+                  sim.startOperation();
+                  s.pop();
+                },
                 disabled: s.animating,
               },
               {
                 key: "peek",
                 label: "Peek",
                 tone: "ghost",
-                onClick: () => s.peek(),
+                onClick: () => {
+                  sim.startOperation();
+                  s.peek();
+                },
                 disabled: s.animating,
               },
               {
@@ -1009,6 +1382,7 @@ function StackVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const v = num(input.searchKey);
                   if (!Number.isFinite(v)) return;
+                  sim.startOperation();
                   s.search(v);
                 },
                 disabled: s.animating || input.searchKey === "",
@@ -1017,7 +1391,10 @@ function StackVisualizer({ entry }: { entry: any }) {
                 key: "display",
                 label: "Display",
                 tone: "ghost",
-                onClick: () => s.display(),
+                onClick: () => {
+                  sim.startOperation();
+                  s.display();
+                },
                 disabled: s.animating,
               },
               {
@@ -1026,6 +1403,7 @@ function StackVisualizer({ entry }: { entry: any }) {
                 onClick: () => {
                   const n = num(input.randomN);
                   if (!Number.isFinite(n)) return;
+                  sim.startOperation();
                   s.randomFill(Math.max(1, Math.min(1024, n)));
                 },
                 disabled: s.animating,
@@ -1034,7 +1412,9 @@ function StackVisualizer({ entry }: { entry: any }) {
                 key: "reset",
                 label: "Reset",
                 tone: "ghost",
-                onClick: () => s.reset(),
+                onClick: () => {
+                  sim.handleRestart();
+                },
                 disabled: s.animating,
               },
             ]}
@@ -1047,6 +1427,17 @@ function StackVisualizer({ entry }: { entry: any }) {
         </aside>
 
         <section className="space-y-3">
+          <SimulationControlToolbar
+            iterationCount={sim.iterationCount}
+            elapsedTime={sim.elapsedTime}
+            isPaused={sim.isPaused}
+            delayMs={sim.delayMs}
+            animating={s.animating}
+            onPause={sim.handlePause}
+            onResume={sim.handleResume}
+            onRestart={sim.handleRestart}
+            onDelayChange={sim.handleDelayChange}
+          />
           <StatusBar
             message={s.message}
             state={s.state}
@@ -1125,6 +1516,37 @@ function StackVisualizer({ entry }: { entry: any }) {
           />
         </section>
       </main>
+
+      {codeOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[480px] bg-background border-l border-border shadow-2xl flex flex-col p-4 pt-16 animate-slide-left">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+            <h3 className="font-mono text-xs uppercase font-bold text-muted-foreground">C Implementation Code</h3>
+            <button 
+              onClick={() => setCodeOpen(false)}
+              className="font-mono text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-widest"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <CodeExportPanel
+              code={code}
+              filename="stack.c"
+              highlightedLines={highlightedLines}
+              onCodeChange={(newCode) => {
+                const match = newCode.match(/#define\s+CAPACITY\s+(\d+)/);
+                if (match) {
+                  const cap = parseInt(match[1], 10);
+                  if (!isNaN(cap) && cap >= 1 && cap <= 64 && cap !== s.capacity) {
+                    s.setCapacity(cap);
+                    setPendingCapacity(cap);
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1148,6 +1570,12 @@ function PlaygroundVisualizer({ entry }: { entry: any }) {
   const [highlight, setHighlight] = useState<{ index: number; kind: "insert" | "delete" | "peek" } | null>(null);
   const [message, setMessage] = usePersistentState(`pg-message-${entry.slug}`, `Interactive Playground initialized for ${entry.name}`);
   const [animating, setAnimating] = useState(false);
+
+  const sim = useSimulationControls(350, () => {
+    setSlots(Array.from({ length: capacity }, (_, i) => ({ id: i, value: null })));
+    setMessage("Playground cleared.");
+    setHighlight(null);
+  });
 
   const onChange = (k: InputField, v: string) =>
     setInput((prev) => ({ ...prev, [k]: v }));
@@ -1838,6 +2266,7 @@ int main(void) {
 
   const insertAtFirst = async (val: number) => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     
     if (actCount >= capacity) {
@@ -1855,7 +2284,7 @@ int main(void) {
             newSlots[i - 1].value = null;
             return newSlots;
         });
-        await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
     }
     
     setMessage(`Inserting new value ${val} at index 0`);
@@ -1865,13 +2294,14 @@ int main(void) {
         newSlots[0].value = val;
         return newSlots;
     });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     setHighlight(null);
     setAnimating(false);
   };
 
   const insertAtEnd = async (val: number) => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     if (actCount >= capacity) {
       setMessage("OVERFLOW — Simulator is full.");
@@ -1886,13 +2316,14 @@ int main(void) {
         newSlots[idx].value = val;
         return newSlots;
     });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     setHighlight(null);
     setAnimating(false);
   };
 
   const insertAtMiddle = async (val: number) => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     
     if (actCount >= capacity) {
@@ -1912,7 +2343,7 @@ int main(void) {
             newSlots[i - 1].value = null;
             return newSlots;
         });
-        await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
     }
 
     setMessage(`Inserting new value ${val} at middle index ${idx}`);
@@ -1922,13 +2353,14 @@ int main(void) {
         newSlots[idx].value = val;
         return newSlots;
     });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     setHighlight(null);
     setAnimating(false);
   };
 
   const deleteAtFirst = async () => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     if (actCount === 0) {
       setMessage("UNDERFLOW — Simulator is empty."); return;
@@ -1936,7 +2368,7 @@ int main(void) {
     setAnimating(true);
     setMessage(`Taking out value at index 0`);
     setHighlight({ index: 0, kind: "delete" });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     
     setSlots(prev => {
         const newSlots = [...prev];
@@ -1953,7 +2385,7 @@ int main(void) {
             newSlots[i].value = null;
             return newSlots;
         });
-        await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
     }
     
     setMessage(`Deleted at First and shifted array left.`);
@@ -1963,6 +2395,7 @@ int main(void) {
 
   const deleteAtEnd = async () => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     if (actCount === 0) {
       setMessage("UNDERFLOW — Simulator is empty."); return;
@@ -1971,7 +2404,7 @@ int main(void) {
     const idx = actCount - 1;
     setMessage(`Taking out value at End (index ${idx})`);
     setHighlight({ index: idx, kind: "delete" });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     
     setSlots(prev => {
         const newSlots = [...prev];
@@ -1986,6 +2419,7 @@ int main(void) {
 
   const deleteAtMiddle = async () => {
     if (animating) return;
+    sim.startOperation();
     let actCount = slots.filter(s => s.value !== null).length;
     if (actCount === 0) {
       setMessage("UNDERFLOW — Simulator is empty."); return;
@@ -1994,7 +2428,7 @@ int main(void) {
     const idx = Math.floor((actCount - 1) / 2);
     setMessage(`Taking out value at middle index ${idx}`);
     setHighlight({ index: idx, kind: "delete" });
-    await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+    await sleep(sim.delayMs);
     
     setSlots(prev => {
         const newSlots = [...prev];
@@ -2011,7 +2445,7 @@ int main(void) {
             newSlots[i].value = null;
             return newSlots;
         });
-        await new Promise(r => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
     }
     
     setMessage(`Deleted at Middle and shifted array left.`);
@@ -2021,6 +2455,7 @@ int main(void) {
 
   const searchOp = async (key: number) => {
     if (animating) return;
+    sim.startOperation();
     setAnimating(true);
 
     if (entry.slug === "binary-search") {
@@ -2033,7 +2468,7 @@ int main(void) {
         const mid = Math.floor((low + high) / 2);
         setHighlight({ index: mid, kind: "peek" });
         setMessage(`Checking index ${mid} (${slots[mid].value}) in range [${low}, ${high}]...`);
-        await new Promise((r) => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
 
         if (slots[mid].value === key) {
           setHighlight({ index: mid, kind: "insert" });
@@ -2047,7 +2482,7 @@ int main(void) {
           setMessage(`${slots[mid].value} > ${key}. Moving high pointer to ${mid - 1}.`);
           high = mid - 1;
         }
-        await new Promise((r) => setTimeout(r, SPEED_MS[speed]));
+        await sleep(sim.delayMs);
       }
 
       if (!found) {
@@ -2055,10 +2490,9 @@ int main(void) {
         setHighlight(null);
       }
 
-      setTimeout(() => {
-        setHighlight(null);
-        setAnimating(false);
-      }, 2000);
+      await sleep(2000);
+      setHighlight(null);
+      setAnimating(false);
       return;
     }
 
@@ -2068,7 +2502,7 @@ int main(void) {
       
       setHighlight({ index: i, kind: "peek" });
       setMessage(`Searching index ${i} for value ${key}...`);
-      await new Promise((r) => setTimeout(r, SPEED_MS[speed]));
+      await sleep(sim.delayMs);
       
       if (slots[i].value === key) {
         setHighlight({ index: i, kind: "insert" });
@@ -2083,10 +2517,9 @@ int main(void) {
       setHighlight(null);
     }
     
-    setTimeout(() => {
-        setHighlight(null);
-        setAnimating(false);
-    }, 2000);
+    await sleep(2000);
+    setHighlight(null);
+    setAnimating(false);
   };
 
   const randomFillOp = (n: number) => {
@@ -2148,7 +2581,7 @@ int main(void) {
               const activeVals = slots.map(s => s.value).filter(val => val !== null) as number[];
               const lastVal = activeVals[activeVals.length - 1];
               if (v < lastVal) {
-                alert(`Cannot insert ${v}. For Binary Search, elements must be in sorted order (ascending). Please enter a value >= ${lastVal}.`);
+                setMessage(`Cannot insert ${v}. For Binary Search, elements must be in sorted order (ascending). Please enter a value >= ${lastVal}.`);
                 return;
               }
             }
@@ -2280,9 +2713,17 @@ int main(void) {
         }
       ];
 
+  const [codeOpen, setCodeOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <VisualizerHeader title={entry.name} family={entry.family} slug={entry.slug} />
+    <div className="min-h-screen bg-background text-foreground relative">
+      <VisualizerHeader 
+        title={entry.name} 
+        family={entry.family} 
+        slug={entry.slug} 
+        onToggleCode={() => setCodeOpen(!codeOpen)}
+        codeOpen={codeOpen}
+      />
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-3">
@@ -2320,6 +2761,17 @@ int main(void) {
         </aside>
 
         <section className="space-y-3">
+          <SimulationControlToolbar
+            iterationCount={sim.iterationCount}
+            elapsedTime={sim.elapsedTime}
+            isPaused={sim.isPaused}
+            delayMs={sim.delayMs}
+            animating={animating}
+            onPause={sim.handlePause}
+            onResume={sim.handleResume}
+            onRestart={sim.handleRestart}
+            onDelayChange={sim.handleDelayChange}
+          />
           <StatusBar message={message} state="PARTIALLY_FILLED" stepPending={false} onStep={() => {}} />
 
           <div className="rounded-lg border border-border bg-card p-4">
@@ -2352,6 +2804,27 @@ int main(void) {
           />
         </section>
       </main>
+
+      {codeOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[480px] bg-background border-l border-border shadow-2xl flex flex-col p-4 pt-16 animate-slide-left">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+            <h3 className="font-mono text-xs uppercase font-bold text-muted-foreground">C Implementation Code</h3>
+            <button 
+              onClick={() => setCodeOpen(false)}
+              className="font-mono text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-widest"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <CodeExportPanel
+              code={code}
+              filename={`${entry.slug.replace("-", "_")}.c`}
+              highlightedLines={highlight?.index !== undefined ? [23, 24, 25, 36, 37] : []}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
